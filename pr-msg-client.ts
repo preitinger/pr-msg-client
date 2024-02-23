@@ -34,6 +34,28 @@ export class MsgClient {
         return resp.rcv;
     }
 
+    async handleSerially(resp: MsgResp, handler: (sender: string, msg: string) => Promise<void>): Promise<void> {
+        for(const sender in resp.rcv) {
+            this.nextReq.ack[sender] = resp.rcv[sender].cnt;
+            for (const msg of resp.rcv[sender].msg) {
+                await handler(sender, msg);
+            }
+        }
+    }
+    async handleParallely(resp: MsgResp, handler: (sender: string, msg: string) => Promise<void>): Promise<void> {
+        const promises: Promise<void>[] = [];
+        for(const sender in resp.rcv) {
+            this.nextReq.ack[sender] = resp.rcv[sender].cnt;
+            for (const msg of resp.rcv[sender].msg) {
+                // here without await for parallelity
+                promises.push(handler(sender, msg));
+            }
+        }
+
+        await Promise.allSettled(promises)
+    }
+
+
     private ownUser: string;
     private nextReq: MsgReq;
 }
