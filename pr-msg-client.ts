@@ -1,3 +1,4 @@
+import { myAddEventListener } from "../pr-client-utils/eventListeners";
 import { MsgReq, MsgResp } from "../pr-msg-common/pr-msg-common";
 
 export class MsgClient {
@@ -27,6 +28,7 @@ export class MsgClient {
     
             }
         
+            console.warn('TODO fix removing event listeners on destruction of the MsgClient')
             signal.addEventListener('abort', onAbort, {
                 once: true
             })
@@ -86,14 +88,22 @@ export class MsgClient {
      */
     private createAbortableHandler(handler: (sender: string, msg: string) => Promise<void>): ((sender: string, msg: string) => Promise<void>) {
         console.warn('createAbortableHandler with event listener leak');
+        if (this.signal == null) return handler;
+        let releaseEventListener: (() => void) | null = null;
         return (sender: string, msg: string): Promise<void> => {
             return Promise.race([handler(sender, msg), new Promise<void>((res, rej) => {
-                this.signal?.addEventListener('abort', () => {
-                    rej(new DOMException('msg client was aborted by signal', 'AbortError'))
+                if (this.signal == null) {
+                    rej(new Error('signal became null?!'));
+                    return;
+                }
+                releaseEventListener = myAddEventListener(this.signal, 'abort', () => {
+                    rej(this.signal?.reason)
                 }, {
                     once: true
                 })
-            })])
+            })]).finally(() => {
+                if (releaseEventListener != null) releaseEventListener();
+            })
         }
     }
 
